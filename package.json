@@ -1,0 +1,42 @@
+{
+  "name": "@bearwatch/sdk",
+  "version": "0.1.0",
+  "description": "BearWatch SDK for Node.js - Job monitoring and alerting",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
+  },
+  "keywords": [
+    "bearwatch",
+    "monitoring",
+    "cron",
+    "job",
+    "heartbeat",
+    "alerting"
+  ],
+  "author": "BearWatch",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.1.0"
+  }
+}
