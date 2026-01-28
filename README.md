@@ -15,100 +15,132 @@ npm install @bearwatch/sdk
 
 ## Quick Start
 
+### 1. Get API Key
+
+Go to [BearWatch Dashboard](https://bearwatch.dev) → Project Settings → Create API Key (e.g., `bw_kI6t8QA21on0DKeRDlen8r2hzucVNL3WdAfaZgQdetY`).
+
+### 2. Create a Job
+
+Create a job in the dashboard. You'll get a job ID (24-character hex string, e.g., `507f1f77bcf86cd799439011`).
+
+### 3. Install and Use
+
+Let's assume you have a daily backup job that runs at 2:00 AM:
+
 ```typescript
+// cron-jobs.ts
+import cron from 'node-cron';
 import { BearWatch } from '@bearwatch/sdk';
 
-const bw = new BearWatch({
-  apiKey: 'your-api-key',
-});
+const bw = new BearWatch({ apiKey: 'your-api-key' });
 
-// Simple ping
-await bw.ping('my-job');
-
-// Ping with status and output
-await bw.ping('my-job', {
-  status: 'SUCCESS',
-  output: 'Processed 100 items',
+cron.schedule('0 0 2 * * *', async () => {
+  await bw.wrap('507f1f77bcf86cd799439011', async () => {
+    await backup();
+  });
 });
 ```
 
 ## Usage
 
-### Simple Ping
+### ping - Manual Status Reporting
 
-For simple jobs that just need to report they ran:
+Use `ping` when you need fine-grained control over status reporting:
 
 ```typescript
-await bw.ping('my-job');
-
-// Report failure with error message
-await bw.ping('my-job', {
-  status: 'FAILED',
-  error: 'Database connection failed',
+cron.schedule('0 0 2 * * *', async () => {
+  try {
+    await backup();
+    await bw.ping('507f1f77bcf86cd799439011', { status: 'SUCCESS' });
+  } catch (error) {
+    await bw.ping('507f1f77bcf86cd799439011', {
+      status: 'FAILED',
+      error: error.message,
+    });
+  }
 });
 ```
 
-### Ping with Options
-
-Include additional details with your heartbeat:
+Include output and metadata:
 
 ```typescript
-await bw.ping('my-job', {
-  status: 'SUCCESS',
-  output: 'Processed 100 records',
-  metadata: { recordCount: 100, source: 'postgres' },
-});
-
-// With manual timing
-const startedAt = new Date();
-await doWork();
-await bw.ping('my-job', {
-  status: 'SUCCESS',
-  startedAt,
-  completedAt: new Date(),
+cron.schedule('0 0 0 * * *', async () => {
+  const bytes = await backup();
+  await bw.ping('507f1f77bcf86cd799439011', {
+    status: 'SUCCESS',
+    output: `Backup completed: ${bytes} bytes`,
+    metadata: { bytes },
+  });
 });
 ```
 
 #### PingOptions
 
-| Option        | Type                   | Description                              |
-| ------------- | ---------------------- | ---------------------------------------- |
-| `status`      | `RequestStatus`        | Job status: `'RUNNING'`, `'SUCCESS'`, `'FAILED'` (default: `'SUCCESS'`) |
-| `output`      | `string`               | Output message                           |
-| `error`       | `string`               | Error message (for `FAILED` status)      |
-| `startedAt`   | `Date \| string`       | Job start time (auto-set if not provided)|
-| `completedAt` | `Date \| string`       | Job completion time (auto-set if not provided) |
-| `metadata`    | `Record<string, unknown>` | Additional key-value pairs            |
-| `retry`       | `boolean`              | Enable/disable retry (default: `true`)   |
+| Option        | Type                      | Default        | Description                              |
+| ------------- | ------------------------- | -------------- | ---------------------------------------- |
+| `status`      | `RequestStatus`           | `'SUCCESS'`    | `'RUNNING'`, `'SUCCESS'`, or `'FAILED'`  |
+| `output`      | `string`                  | -              | Output message (max 10KB)                |
+| `error`       | `string`                  | -              | Error message for `FAILED` status (max 10KB) |
+| `startedAt`   | `Date \| string`          | current time   | Job start time                           |
+| `completedAt` | `Date \| string`          | current time   | Job completion time                      |
+| `metadata`    | `Record<string, unknown>` | -              | Additional key-value pairs (max 10KB)    |
+| `retry`       | `boolean`                 | `true`         | Enable/disable retry                     |
 
-> **Note**: `TIMEOUT` and `MISSED` are server-detected states and cannot be set in requests. They appear only in `ResponseStatus`.
+> **Note**: `TIMEOUT` and `MISSED` are server-detected states and cannot be set in requests.
 
-### Wrap Helper
+### wrap - Automatic Status Reporting
 
-Automatically measures execution time and reports success or failure:
+Wraps a function and automatically:
+- Measures `startedAt` and `completedAt` 
+- Reports `SUCCESS` or `FAILED` based on whether the function completes or throws
 
 ```typescript
-const result = await bw.wrap('my-job', async () => {
-  const data = await fetchData();
-  await processData(data);
-  return data.length;
+cron.schedule('0 0 2 * * *', async () => {
+  await bw.wrap('507f1f77bcf86cd799439011', async () => {
+    await backup();
+  });
 });
 ```
+
+**Error handling behavior:**
+- On success: reports `SUCCESS` with execution duration
+- On error: reports `FAILED` with error message, then **re-throws the original error**
+
+```typescript
+cron.schedule('0 0 2 * * *', async () => {
+  try {
+    await bw.wrap('507f1f77bcf86cd799439011', async () => {
+      await backup();
+    });
+  } catch (error) {
+    // BearWatch already reported FAILED status
+    // You can add additional error handling here
+    console.error(error);
+  }
+});
+```
+
+> **Tip**: Use `wrap` for most cases. Use `ping` when you need more control (e.g., reporting RUNNING status for long jobs).
 
 ## Configuration
 
 ```typescript
 const bw = new BearWatch({
-  // Required
   apiKey: 'your-api-key',
 
   // Optional (defaults shown)
-  baseUrl: 'https://api.bearwatch.dev',
   timeout: 30000, // 30 seconds
   maxRetries: 3,
   retryDelay: 500, // 500ms base delay
 });
 ```
+
+| Option       | Type     | Required | Default  | Description               |
+| ------------ | -------- | -------- | -------- | ------------------------- |
+| `apiKey`     | `string` | Yes      | -        | API key for authentication |
+| `timeout`    | `number` | No       | `30000`  | Request timeout (ms)      |
+| `maxRetries` | `number` | No       | `3`      | Max retry attempts        |
+| `retryDelay` | `number` | No       | `500`    | Initial retry delay (ms)  |
 
 ## Retry Policy
 
@@ -120,7 +152,7 @@ const bw = new BearWatch({
 ### Retry Behavior
 
 - **Exponential backoff**: 500ms → 1000ms → 2000ms
-- **429 Rate Limit**: Respects `Retry-After` header
+- **429 Rate Limit**: Respects `Retry-After` header (rate limit: 100 requests/minute per API key)
 - **5xx Server Errors**: Retries with backoff
 - **401/404**: No retry (client errors)
 
@@ -128,26 +160,23 @@ const bw = new BearWatch({
 
 ```typescript
 // Disable retry for a specific call
-await bw.ping('my-job', { retry: false });
+await bw.ping('507f1f77bcf86cd799439011', { retry: false });
 ```
 
 ## Error Handling
+
+When the SDK fails to communicate with BearWatch (network failure, server down, invalid API key, etc.), it throws a `BearWatchError`:
 
 ```typescript
 import { BearWatch, BearWatchError } from '@bearwatch/sdk';
 
 try {
-  await bw.ping('my-job');
+  await bw.ping('507f1f77bcf86cd799439011');
 } catch (error) {
   if (error instanceof BearWatchError) {
+    // SDK failed to report to BearWatch
     console.error(`Code: ${error.code}`);
     console.error(`Status: ${error.statusCode}`);
-    console.error(`Context: ${JSON.stringify(error.context)}`);
-
-    // Original error (if any)
-    if (error.cause) {
-      console.error(`Cause: ${error.cause.message}`);
-    }
   }
 }
 ```
@@ -162,11 +191,10 @@ try {
 | `SERVER_ERROR`    | 5xx - Server error       | Yes     |
 | `NETWORK_ERROR`   | Network failure          | Yes     |
 | `TIMEOUT`         | Request timed out        | Yes     |
-| `INVALID_RESPONSE`| Non-JSON response        | No      |
 
 ## TypeScript
 
-The SDK is written in TypeScript and includes type definitions:
+The SDK is written in TypeScript and includes full type definitions:
 
 ```typescript
 import {
@@ -182,6 +210,87 @@ import {
   Status,          // Alias for ResponseStatus (deprecated)
 } from '@bearwatch/sdk';
 ```
+
+### Method Signatures
+
+```typescript
+class BearWatch {
+  constructor(config: BearWatchConfig);
+  ping(jobId: string, options?: PingOptions): Promise<HeartbeatResponse>;
+  wrap<T>(jobId: string, fn: () => Promise<T>): Promise<T>;
+}
+```
+
+## Common Patterns
+
+### node-cron
+
+```typescript
+import cron from 'node-cron';
+import { BearWatch } from '@bearwatch/sdk';
+
+const bw = new BearWatch({ apiKey: 'your-api-key' });
+
+// Every day at 3:00 AM
+cron.schedule('0 0 3 * * *', async () => {
+  await bw.wrap('6848c9e5f8a2b3d4e5f60001', async () => {
+    await backup();
+  });
+});
+```
+
+### AWS Lambda (EventBridge Scheduler)
+
+```typescript
+import { BearWatch } from '@bearwatch/sdk';
+
+const bw = new BearWatch({ apiKey: process.env.BEARWATCH_API_KEY });
+
+export const handler = async () => {
+  await bw.wrap('6848c9e5f8a2b3d4e5f60002', async () => {
+    await backup();
+  });
+};
+```
+
+### Long-Running Jobs
+
+```typescript
+async function runBackup() {
+  const jobId = '6848c9e5f8a2b3d4e5f60003';
+  const startedAt = new Date();
+
+  await bw.ping(jobId, { status: 'RUNNING' });
+
+  try {
+    await backup();
+    await bw.ping(jobId, {
+      status: 'SUCCESS',
+      startedAt,
+      completedAt: new Date(),
+    });
+  } catch (error) {
+    await bw.ping(jobId, {
+      status: 'FAILED',
+      startedAt,
+      completedAt: new Date(),
+      error: error.message,
+    });
+    throw error;
+  }
+}
+```
+
+## FAQ
+
+**Q: Do I need to create jobs in the dashboard first?**
+A: Yes, create a job in the [BearWatch Dashboard](https://bearwatch.dev) first to get a job ID.
+
+**Q: What's the difference between `wrap` and `ping`?**
+A: `wrap` automatically measures execution time and reports SUCCESS/FAILED based on whether the function completes or throws. `ping` gives you manual control over when and what to report.
+
+**Q: What happens if the SDK fails to report (network error)?**
+A: By default, the SDK retries 3 times with exponential backoff. If all retries fail, `ping` throws a `BearWatchError`. For `wrap`, the original function's error takes priority and is always re-thrown.
 
 ## CommonJS Support
 
