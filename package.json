@@ -1,6 +1,6 @@
 {
   "name": "@bearwatch/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "BearWatch SDK for Node.js - Job monitoring and alerting",
   "type": "module",
   "main": "./dist/index.js",
