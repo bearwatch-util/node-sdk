@@ -55,7 +55,7 @@ cron.schedule('0 0 2 * * *', async () => {
   } catch (error) {
     await bw.ping('507f1f77bcf86cd799439011', {
       status: 'FAILED',
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 });
@@ -81,7 +81,7 @@ cron.schedule('0 0 0 * * *', async () => {
 | `status`      | `RequestStatus`           | `'SUCCESS'`    | `'RUNNING'`, `'SUCCESS'`, or `'FAILED'`  |
 | `output`      | `string`                  | -              | Output message (max 10KB)                |
 | `error`       | `string`                  | -              | Error message for `FAILED` status (max 10KB) |
-| `startedAt`   | `Date \| string`          | current time   | Job start time                           |
+| `startedAt`   | `Date \| string`          | `completedAt`  | Job start time                           |
 | `completedAt` | `Date \| string`          | current time   | Job completion time                      |
 | `metadata`    | `Record<string, unknown>` | -              | Additional key-value pairs (max 10KB)    |
 | `retry`       | `boolean`                 | `true`         | Enable/disable retry                     |
@@ -91,7 +91,7 @@ cron.schedule('0 0 0 * * *', async () => {
 ### wrap - Automatic Status Reporting
 
 Wraps a function and automatically:
-- Measures `startedAt` and `completedAt` 
+- Measures `startedAt` and `completedAt`
 - Reports `SUCCESS` or `FAILED` based on whether the function completes or throws
 
 ```typescript
@@ -101,6 +101,29 @@ cron.schedule('0 0 2 * * *', async () => {
   });
 });
 ```
+
+Include metadata:
+
+```typescript
+cron.schedule('0 0 2 * * *', async () => {
+  await bw.wrap('507f1f77bcf86cd799439011', async () => {
+    await backup();
+  }, {
+    metadata: {
+      server: 'backup-01',
+      region: 'ap-northeast-2',
+      version: '1.2.0',
+    },
+  });
+});
+```
+
+#### WrapOptions
+
+| Option     | Type                      | Default | Description                           |
+| ---------- | ------------------------- | ------- | ------------------------------------- |
+| `metadata` | `Record<string, unknown>` | -       | Additional key-value pairs (max 10KB) |
+| `retry`    | `boolean`                 | `true`  | Enable/disable retry                  |
 
 **Error handling behavior:**
 - On success: reports `SUCCESS` with execution duration
@@ -205,6 +228,7 @@ import {
   ErrorContext,
   HeartbeatResponse,
   PingOptions,
+  WrapOptions,
   RequestStatus,   // For requests: 'RUNNING' | 'SUCCESS' | 'FAILED'
   ResponseStatus,  // For responses: includes 'TIMEOUT' | 'MISSED'
   Status,          // Alias for ResponseStatus (deprecated)
@@ -217,7 +241,18 @@ import {
 class BearWatch {
   constructor(config: BearWatchConfig);
   ping(jobId: string, options?: PingOptions): Promise<HeartbeatResponse>;
-  wrap<T>(jobId: string, fn: () => Promise<T>): Promise<T>;
+  wrap<T>(jobId: string, fn: () => Promise<T>, options?: WrapOptions): Promise<T>;
+}
+```
+
+### HeartbeatResponse
+
+```typescript
+interface HeartbeatResponse {
+  jobId: string;      // Job ID
+  runId: string;      // Unique run ID for this execution
+  status: ResponseStatus;
+  receivedAt: string; // ISO 8601 timestamp
 }
 ```
 
@@ -274,7 +309,7 @@ async function runBackup() {
       status: 'FAILED',
       startedAt,
       completedAt: new Date(),
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
     throw error;
   }
@@ -291,6 +326,17 @@ A: `wrap` automatically measures execution time and reports SUCCESS/FAILED based
 
 **Q: What happens if the SDK fails to report (network error)?**
 A: By default, the SDK retries 3 times with exponential backoff. If all retries fail, `ping` throws a `BearWatchError`. For `wrap`, the original function's error takes priority and is always re-thrown.
+
+## Troubleshooting
+
+**"Cannot use import statement outside a module"**
+This SDK is ESM only. Add `"type": "module"` to your `package.json`.
+
+**"fetch is not defined"**
+Requires Node.js 18.0.0 or higher which includes native `fetch`.
+
+**"JOB_NOT_FOUND" error**
+Create the job in the [BearWatch Dashboard](https://bearwatch.dev) first. The job ID must exist before sending pings.
 
 ## CommonJS Support
 
