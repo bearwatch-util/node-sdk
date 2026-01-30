@@ -164,7 +164,7 @@ export class BearWatch {
           status: 'FAILED',
           startedAt,
           completedAt: new Date(),
-          error: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? (error.stack || error.message) : String(error),
           metadata: options?.metadata,
           retry: options?.retry,
         });

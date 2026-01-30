@@ -55,7 +55,7 @@ cron.schedule('0 0 2 * * *', async () => {
   } catch (error) {
     await bw.ping('507f1f77bcf86cd799439011', {
       status: 'FAILED',
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? (error.stack || error.message) : String(error),
     });
   }
 });
@@ -80,7 +80,7 @@ cron.schedule('0 0 0 * * *', async () => {
 | ------------- | ------------------------- | -------------- | ---------------------------------------- |
 | `status`      | `RequestStatus`           | `'SUCCESS'`    | `'RUNNING'`, `'SUCCESS'`, or `'FAILED'`  |
 | `output`      | `string`                  | -              | Output message (max 10KB)                |
-| `error`       | `string`                  | -              | Error message for `FAILED` status (max 10KB) |
+| `error`       | `string`                  | -              | Error message for `FAILED` status (max 75KB) |
 | `startedAt`   | `Date \| string`          | `completedAt`  | Job start time                           |
 | `completedAt` | `Date \| string`          | current time   | Job completion time                      |
 | `metadata`    | `Record<string, unknown>` | -              | Additional key-value pairs (max 10KB)    |
@@ -88,7 +88,7 @@ cron.schedule('0 0 0 * * *', async () => {
 
 > **Note**: `TIMEOUT` and `MISSED` are server-detected states and cannot be set in requests.
 
-> **Size Limits**: The `output`, `error`, and `metadata` fields have a 10KB size limit each. If exceeded, the server automatically truncates the data (no error is returned). For `output` and `error`, strings are truncated to fit within the limit. For `metadata`, if the serialized JSON exceeds 10KB, the entire field is set to `null`.
+> **Size Limits**: The `output` and `metadata` fields have a 10KB size limit each, while the `error` field has a 75KB size limit. If exceeded, the server automatically truncates the data (no error is returned). For `output` and `error`, strings are truncated to fit within the limit. For `metadata`, if the serialized JSON exceeds 10KB, the entire field is set to `null`.
 
 ### wrap - Automatic Status Reporting
 
@@ -127,7 +127,7 @@ cron.schedule('0 0 2 * * *', async () => {
 | `metadata` | `Record<string, unknown>` | -       | Additional key-value pairs (max 10KB) |
 | `retry`    | `boolean`                 | `true`  | Enable/disable retry                  |
 
-> **Size Limits**: The `metadata` field has a 10KB size limit. If exceeded, the server automatically truncates the data (no error is returned). If the serialized JSON exceeds 10KB, the entire field is set to `null`. When errors occur, the error message captured by `wrap` also follows the same 10KB limit and will be truncated if exceeded.
+> **Size Limits**: The `metadata` field has a 10KB size limit. If exceeded, the server automatically truncates the data (no error is returned). If the serialized JSON exceeds 10KB, the entire field is set to `null`. When errors occur, the error message captured by `wrap` has a 75KB limit and will be truncated if exceeded.
 
 **Error handling behavior:**
 - On success: reports `SUCCESS` with execution duration
@@ -179,7 +179,7 @@ const bw = new BearWatch({
 ### Retry Behavior
 
 - **Exponential backoff**: 500ms → 1000ms → 2000ms
-- **429 Rate Limit**: Respects `Retry-After` header (rate limit: 100 requests/minute per API key)
+- **429 Rate Limit**: Respects `Retry-After` header
 - **5xx Server Errors**: Retries with backoff
 - **401/404**: No retry (client errors)
 
