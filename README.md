@@ -88,6 +88,8 @@ cron.schedule('0 0 0 * * *', async () => {
 
 > **Note**: `TIMEOUT` and `MISSED` are server-detected states and cannot be set in requests.
 
+> **Size Limits**: The `output`, `error`, and `metadata` fields have a 10KB size limit each. If exceeded, the server automatically truncates the data (no error is returned). For `output` and `error`, strings are truncated to fit within the limit. For `metadata`, if the serialized JSON exceeds 10KB, the entire field is set to `null`.
+
 ### wrap - Automatic Status Reporting
 
 Wraps a function and automatically:
@@ -124,6 +126,8 @@ cron.schedule('0 0 2 * * *', async () => {
 | ---------- | ------------------------- | ------- | ------------------------------------- |
 | `metadata` | `Record<string, unknown>` | -       | Additional key-value pairs (max 10KB) |
 | `retry`    | `boolean`                 | `true`  | Enable/disable retry                  |
+
+> **Size Limits**: The `metadata` field has a 10KB size limit. If exceeded, the server automatically truncates the data (no error is returned). If the serialized JSON exceeds 10KB, the entire field is set to `null`. When errors occur, the error message captured by `wrap` also follows the same 10KB limit and will be truncated if exceeded.
 
 **Error handling behavior:**
 - On success: reports `SUCCESS` with execution duration
