@@ -7,6 +7,7 @@ import { createHttpClient, type HttpClient } from './internal/http-client.js';
 import type {
   HeartbeatResponse,
   PingOptions,
+  WrapOptions,
 } from './types.js';
 
 /**
@@ -126,6 +127,7 @@ export class BearWatch {
    *
    * @param jobId - The job identifier
    * @param fn - Async function to execute
+   * @param options - Optional wrap options (metadata, retry)
    * @returns Result of the function
    *
    * @example
@@ -135,9 +137,14 @@ export class BearWatch {
    *   await processData(data);
    *   return data.length;
    * });
+   *
+   * // With metadata
+   * await bw.wrap('my-job', async () => {
+   *   await backup();
+   * }, { metadata: { server: 'backup-01' } });
    * ```
    */
-  async wrap<T>(jobId: string, fn: () => Promise<T>): Promise<T> {
+  async wrap<T>(jobId: string, fn: () => Promise<T>, options?: WrapOptions): Promise<T> {
     const startedAt = new Date();
     try {
       const result = await fn();
@@ -145,6 +152,8 @@ export class BearWatch {
         status: 'SUCCESS',
         startedAt,
         completedAt: new Date(),
+        metadata: options?.metadata,
+        retry: options?.retry,
       });
       return result;
     } catch (error) {
@@ -156,6 +165,8 @@ export class BearWatch {
           startedAt,
           completedAt: new Date(),
           error: error instanceof Error ? error.message : String(error),
+          metadata: options?.metadata,
+          retry: options?.retry,
         });
       } catch {
         // Ignore reporting failure - original error takes priority

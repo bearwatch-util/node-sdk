@@ -15,6 +15,7 @@ export type {
   ResponseStatus,
   Status, // deprecated, kept for backward compatibility
   PingOptions,
+  WrapOptions,
   HeartbeatResponse,
 } from './types.js';
 

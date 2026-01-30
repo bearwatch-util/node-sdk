@@ -292,5 +292,74 @@ describe('BearWatch', () => {
       // completedAt should be after startedAt by at least the delay
       expect(completedAt.getTime() - startedAt.getTime()).toBeGreaterThanOrEqual(delay - 10);
     });
+
+    it('should send metadata with SUCCESS ping', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          success: true,
+          data: {
+            jobId: 'my-job',
+            runId: 'run-123',
+            status: 'SUCCESS',
+            receivedAt: '2026-01-22T10:00:01Z',
+          },
+        })
+      );
+
+      const bw = new BearWatch({ apiKey: 'test-key' });
+      const metadata = { server: 'backup-01', count: 42 };
+
+      await bw.wrap('my-job', async () => 'result', { metadata });
+
+      const body = JSON.parse(mockFetch.mock.calls[0]?.[1]?.body as string);
+      expect(body.status).toBe('SUCCESS');
+      expect(body.metadata).toEqual(metadata);
+    });
+
+    it('should send metadata with FAILED ping', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          success: true,
+          data: {
+            jobId: 'my-job',
+            runId: 'run-123',
+            status: 'FAILED',
+            receivedAt: '2026-01-22T10:00:01Z',
+          },
+        })
+      );
+
+      const bw = new BearWatch({ apiKey: 'test-key' });
+      const metadata = { server: 'backup-01', attemptNumber: 3 };
+      const fn = vi.fn().mockRejectedValue(new Error('Backup failed'));
+
+      await expect(bw.wrap('my-job', fn, { metadata })).rejects.toThrow('Backup failed');
+
+      const body = JSON.parse(mockFetch.mock.calls[0]?.[1]?.body as string);
+      expect(body.status).toBe('FAILED');
+      expect(body.error).toBe('Backup failed');
+      expect(body.metadata).toEqual(metadata);
+    });
+
+    it('should respect retry option', async () => {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          success: true,
+          data: {
+            jobId: 'my-job',
+            runId: 'run-123',
+            status: 'SUCCESS',
+            receivedAt: '2026-01-22T10:00:01Z',
+          },
+        })
+      );
+
+      const bw = new BearWatch({ apiKey: 'test-key' });
+
+      await bw.wrap('my-job', async () => 'result', { retry: false });
+
+      // Verify the request was made (retry option is passed internally to ping)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });

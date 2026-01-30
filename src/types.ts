@@ -37,6 +37,16 @@ export interface PingOptions {
 }
 
 /**
+ * Options for the wrap operation.
+ */
+export interface WrapOptions {
+  /** Optional metadata (key-value pairs) */
+  metadata?: Record<string, unknown>;
+  /** Enable/disable retry (default: true) */
+  retry?: boolean;
+}
+
+/**
  * Response from heartbeat operations.
  */
 export interface HeartbeatResponse {
